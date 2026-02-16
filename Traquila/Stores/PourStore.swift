@@ -17,6 +17,7 @@ final class PourStore {
         enjoyment: Int?,
         nextDayFeel: Int?,
         notes: String,
+        photoData: Data?,
         bottle: Bottle
     ) throws {
         let entry = PourEntry(
@@ -27,6 +28,7 @@ final class PourStore {
             enjoyment: enjoyment,
             nextDayFeel: nextDayFeel,
             notes: notes,
+            photoData: photoData,
             bottle: bottle
         )
         context.insert(entry)
@@ -42,6 +44,7 @@ final class PourStore {
         enjoyment: Int?,
         nextDayFeel: Int?,
         notes: String,
+        photoData: Data?,
         bottle: Bottle
     ) throws {
         pour.date = date
@@ -51,6 +54,7 @@ final class PourStore {
         pour.enjoyment = enjoyment
         pour.nextDayFeel = nextDayFeel
         pour.notes = notes
+        pour.photoData = photoData
         pour.bottle = bottle
         try context.save()
     }

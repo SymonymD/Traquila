@@ -76,16 +76,16 @@ struct PoursTimelineView: View {
                 }
             }
             .navigationTitle("Pour Log")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingAdd = true
                     } label: {
-                        Label("Quick Log", systemImage: "plus.circle.fill")
+                        Label("Quick Log", systemImage: "plus.circle")
                     }
                 }
             }
-            .searchable(text: $searchText, prompt: "Search bottle or notes")
             .sheet(isPresented: $showingAdd) {
                 NavigationStack {
                     PourAddView()
@@ -104,6 +104,22 @@ struct PoursTimelineView: View {
 
     private var filterBar: some View {
         VStack(spacing: 8) {
+            HStack {
+                TraquilaLogoView(compact: true)
+                Spacer()
+            }
+
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Search bottle or notes", text: $searchText)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack {
                     Picker("Bottle", selection: $selectedBottleID) {
@@ -122,8 +138,27 @@ struct PoursTimelineView: View {
                     }
                     .pickerStyle(.menu)
 
-                    Toggle("Date", isOn: $useDateFilter)
-                        .labelsHidden()
+                    Button {
+                        useDateFilter.toggle()
+                    } label: {
+                        Image(systemName: useDateFilter ? "calendar.badge.checkmark" : "calendar")
+                            .foregroundStyle(useDateFilter ? TraquilaTheme.terracotta : .secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule()
+                                    .fill(useDateFilter ? TraquilaTheme.terracotta.opacity(0.16) : Color.clear)
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(
+                                        useDateFilter ? TraquilaTheme.terracotta : TraquilaTheme.tileLine.opacity(0.6),
+                                        lineWidth: 1
+                                    )
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(useDateFilter ? "Hide date filter" : "Show date filter")
                 }
             }
             if useDateFilter {
@@ -134,7 +169,7 @@ struct PoursTimelineView: View {
             }
         }
         .padding(.horizontal)
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
         .background(TalaveraHeaderBackground().ignoresSafeArea())
     }
 

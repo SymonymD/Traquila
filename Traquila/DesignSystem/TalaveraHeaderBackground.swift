@@ -2,20 +2,24 @@ import SwiftUI
 
 struct TalaveraHeaderBackground: View {
     var body: some View {
-        LinearGradient(
-            colors: [TraquilaTheme.parchment, TraquilaTheme.marigold.opacity(0.2)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(
-                    ImagePaint(
-                        image: Image(systemName: "square.grid.3x3"),
-                        scale: 0.2
-                    )
+        Rectangle()
+            .fill(.ultraThinMaterial)
+            .overlay {
+                LinearGradient(
+                    colors: [TraquilaTheme.parchment.opacity(0.35), TraquilaTheme.marigold.opacity(0.14)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
                 )
-                .opacity(0.03)
-        }
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(
+                        ImagePaint(
+                            image: Image(systemName: "square.grid.3x3"),
+                            scale: 0.22
+                        )
+                    )
+                    .opacity(0.015)
+            }
     }
 }

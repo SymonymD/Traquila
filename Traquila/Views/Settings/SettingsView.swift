@@ -8,6 +8,7 @@ struct SettingsView: View {
 
     @State private var exportURL: URL?
     @State private var exportError: String?
+    @State private var showResetConfirm = false
 
     var body: some View {
         NavigationStack {
@@ -28,9 +29,26 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("Discovery Data") {
+                    Picker("Source", selection: $settings.discoverySourceMode) {
+                        ForEach(DiscoverySourceMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    Text(settings.discoverySourceMode.helperText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Tip: Start with Curated Local to keep costs low while validating demand.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section("Responsible Use") {
-                    Toggle("Enable Pacing Timer", isOn: $settings.enablePacing)
-                    Toggle("Hydration Reminder", isOn: $settings.enableHydrationReminder)
+                    Toggle("Enable Responsible Nudges", isOn: $settings.responsibleNudgesEnabled.animation())
+                    if settings.responsibleNudgesEnabled {
+                        Toggle("Enable Pacing Timer", isOn: $settings.enablePacing)
+                        Toggle("Hydration Reminder", isOn: $settings.enableHydrationReminder)
+                    }
                     Text("Pacing Timer helps space pours with a configurable interval.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -62,8 +80,25 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                Section("Onboarding") {
+                    Button("Reset Onboarding", role: .destructive) {
+                        showResetConfirm = true
+                    }
+                    Text("This will show onboarding again on next launch.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .navigationTitle("Settings")
+            .alert("Reset Onboarding?", isPresented: $showResetConfirm) {
+                Button("Cancel", role: .cancel) { }
+                Button("Reset", role: .destructive) {
+                    settings.resetOnboarding()
+                }
+            } message: {
+                Text("Your onboarding flow will return the next time the app launches.")
+            }
         }
     }
 

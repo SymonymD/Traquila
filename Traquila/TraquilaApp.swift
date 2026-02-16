@@ -4,12 +4,15 @@ import SwiftUI
 @main
 struct TraquilaApp: App {
     @StateObject private var settings = AppSettings()
+    @StateObject private var discoverSession = DiscoverSession()
+    @StateObject private var tabRouter = AppTabRouter()
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Bottle.self,
             PourEntry.self,
-            BottlePhoto.self
+            BottlePhoto.self,
+            WishlistItem.self
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -22,8 +25,10 @@ struct TraquilaApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootTabView()
+            AppCoordinatorView()
                 .environmentObject(settings)
+                .environmentObject(discoverSession)
+                .environmentObject(tabRouter)
                 .preferredColorScheme(colorScheme)
         }
         .modelContainer(sharedModelContainer)

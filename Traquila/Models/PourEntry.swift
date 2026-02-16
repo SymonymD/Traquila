@@ -11,6 +11,7 @@ final class PourEntry {
     var enjoyment: Int?
     var nextDayFeel: Int?
     var notes: String
+    var photoData: Data?
     var createdAt: Date
 
     var bottle: Bottle
@@ -24,6 +25,7 @@ final class PourEntry {
         enjoyment: Int? = nil,
         nextDayFeel: Int? = nil,
         notes: String = "",
+        photoData: Data? = nil,
         createdAt: Date = .now,
         bottle: Bottle
     ) {
@@ -35,6 +37,7 @@ final class PourEntry {
         self.enjoyment = enjoyment
         self.nextDayFeel = nextDayFeel
         self.notes = notes
+        self.photoData = photoData
         self.createdAt = createdAt
         self.bottle = bottle
     }

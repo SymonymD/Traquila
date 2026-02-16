@@ -9,12 +9,12 @@ struct TraquilaCard<Content: View>: View {
             .padding(TraquilaTheme.cardPadding)
             .background(
                 RoundedRectangle(cornerRadius: TraquilaTheme.cornerRadius)
-                    .fill(.background)
+                    .fill(.thinMaterial)
                     .overlay(
                         RoundedRectangle(cornerRadius: TraquilaTheme.cornerRadius)
                             .stroke(accent.opacity(0.35), lineWidth: 1)
                     )
             )
-            .shadow(color: .black.opacity(0.08), radius: 8, y: 4)
+            .shadow(color: .black.opacity(0.06), radius: 8, y: 4)
     }
 }

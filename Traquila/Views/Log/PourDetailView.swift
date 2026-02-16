@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PourDetailView: View {
     let pour: PourEntry
+    @State private var showingEdit = false
 
     var body: some View {
         List {
@@ -30,8 +31,29 @@ struct PourDetailView: View {
                     Text(pour.notes)
                 }
             }
+
+            if let data = pour.photoData, let image = UIImage(data: data) {
+                Section("Photo") {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+            }
         }
         .navigationTitle("Pour Detail")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Edit") {
+                    showingEdit = true
+                }
+            }
+        }
+        .sheet(isPresented: $showingEdit) {
+            NavigationStack {
+                PourAddView(editingPour: pour)
+            }
+        }
     }
 }

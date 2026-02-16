@@ -129,3 +129,22 @@ enum VolumeUnit: String, CaseIterable, Identifiable {
         }
     }
 }
+
+enum DiscoverySourceMode: String, CaseIterable, Identifiable {
+    case curatedLocal = "Curated Local"
+    case hybrid = "Hybrid (Live + Local)"
+    case premium = "Premium Catalog"
+
+    var id: String { rawValue }
+
+    var helperText: String {
+        switch self {
+        case .curatedLocal:
+            "Lowest-cost mode using Traquila's built-in curated catalog."
+        case .hybrid:
+            "Live search first, then falls back to Traquila's curated catalog."
+        case .premium:
+            "Reserved for future paid tequila data providers."
+        }
+    }
+}

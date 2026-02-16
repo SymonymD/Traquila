@@ -1,4 +1,5 @@
 import SwiftData
+import PhotosUI
 import SwiftUI
 
 struct PourAddView: View {
@@ -21,6 +22,8 @@ struct PourAddView: View {
     @State private var includeEnjoyment = false
     @State private var includeNextDayFeel = false
     @State private var notes: String
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var photoData: Data?
 
     @State private var showingBottlePicker = false
     @State private var errorText: String?
@@ -54,6 +57,7 @@ struct PourAddView: View {
         _includeNextDayFeel = State(initialValue: editingPour?.nextDayFeel != nil)
 
         _notes = State(initialValue: editingPour?.notes ?? "")
+        _photoData = State(initialValue: editingPour?.photoData)
     }
 
     var body: some View {
@@ -109,6 +113,29 @@ struct PourAddView: View {
                 }
             }
 
+            Section("Photo (optional)") {
+                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                    Label(photoData == nil ? "Add Photo" : "Replace Photo", systemImage: "photo")
+                }
+
+                if let image = previewImage {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 180)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                        Button("Remove Photo", role: .destructive) {
+                            selectedPhotoItem = nil
+                            photoData = nil
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+
             Section("Notes") {
                 TextEditor(text: $notes)
                     .frame(minHeight: 100)
@@ -133,6 +160,9 @@ struct PourAddView: View {
         .sheet(isPresented: $showingBottlePicker) {
             BottlePickerSheet(selectedBottleID: $selectedBottleID, bottles: bottles)
         }
+        .task(id: selectedPhotoItem) {
+            await loadSelectedPhoto()
+        }
     }
 
     private var selectedBottle: Bottle? {
@@ -144,6 +174,11 @@ struct PourAddView: View {
             return value
         }
         return Double(customAmountText)
+    }
+
+    private var previewImage: UIImage? {
+        guard let photoData else { return nil }
+        return UIImage(data: photoData)
     }
 
     private func save() {
@@ -168,6 +203,7 @@ struct PourAddView: View {
                     enjoyment: includeEnjoyment ? Int(enjoyment) : nil,
                     nextDayFeel: includeNextDayFeel ? Int(nextDayFeel) : nil,
                     notes: notes,
+                    photoData: photoData,
                     bottle: bottle
                 )
             } else {
@@ -179,6 +215,7 @@ struct PourAddView: View {
                     enjoyment: includeEnjoyment ? Int(enjoyment) : nil,
                     nextDayFeel: includeNextDayFeel ? Int(nextDayFeel) : nil,
                     notes: notes,
+                    photoData: photoData,
                     bottle: bottle
                 )
             }
@@ -187,6 +224,26 @@ struct PourAddView: View {
         } catch {
             errorText = error.localizedDescription
         }
+    }
+
+    private func loadSelectedPhoto() async {
+        guard let selectedPhotoItem else { return }
+
+        do {
+            if let data = try await selectedPhotoItem.loadTransferable(type: Data.self) {
+                photoData = compressedJPEGData(from: data)
+            }
+        } catch {
+            errorText = "Couldn't load selected photo."
+        }
+    }
+
+    private func compressedJPEGData(from data: Data) -> Data {
+        guard let image = UIImage(data: data),
+              let jpeg = image.jpegData(compressionQuality: 0.78) else {
+            return data
+        }
+        return jpeg
     }
 }
 
