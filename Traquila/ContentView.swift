@@ -21,7 +21,8 @@ private enum PreviewData {
             Bottle.self,
             PourEntry.self,
             BottlePhoto.self,
-            WishlistItem.self
+            WishlistItem.self,
+            UserProfile.self
         ])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
         return try! ModelContainer(for: schema, configurations: [configuration])

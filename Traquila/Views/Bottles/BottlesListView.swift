@@ -2,8 +2,8 @@ import SwiftData
 import SwiftUI
 
 enum BottleListFilter: String, CaseIterable, Identifiable {
-    case all = "All"
-    case favorites = "Favorites"
+    case cellar = "Cellar"
+    case topRated = "Top Rated"
     case recent = "Recent"
     case wishlist = "Wishlist"
 
@@ -24,24 +24,30 @@ struct BottlesListView: View {
     @Query(sort: [SortDescriptor(\Bottle.updatedAt, order: .reverse)]) private var bottles: [Bottle]
     @Query(sort: [SortDescriptor(\WishlistItem.createdAt, order: .reverse)]) private var wishlist: [WishlistItem]
 
-    @State private var filter: BottleListFilter = .all
+    @State private var filter: BottleListFilter = .cellar
     @State private var resultsDisplayMode: ResultsDisplayMode = .list
     @State private var showingAdd = false
     @State private var pourBottle: Bottle?
+    @State private var libraryExpanded = false
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         NavigationStack {
             GeometryReader { proxy in
+                let libraryHeightRatio = libraryExpanded ? 0.67 : 0.33
+                let resultsHeightRatio = libraryExpanded ? 0.33 : 0.67
+
                 VStack(spacing: 0) {
-                    resultsSection(height: max(320, proxy.size.height * 0.67))
+                    resultsSection(height: max(220, proxy.size.height * resultsHeightRatio))
 
                     Divider()
                         .overlay(TraquilaTheme.tileLine.opacity(0.45))
 
                     librarySection
-                        .frame(height: max(220, proxy.size.height * 0.33))
+                        .frame(height: max(220, proxy.size.height * libraryHeightRatio))
                 }
                 .background(TraquilaTheme.parchment.opacity(0.32))
+                .animation(.easeInOut(duration: 0.22), value: libraryExpanded)
             }
             .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showingAdd) {
@@ -82,14 +88,18 @@ struct BottlesListView: View {
                 TextField("Search names, brands, NOM", text: $discoverSession.query)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .focused($isSearchFocused)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
             .padding(.horizontal)
+            .onTapGesture {
+                libraryExpanded = false
+            }
 
             HStack {
-                Text(discoverSession.query.trimmed.isEmpty ? "Popular Selections" : "Search Results")
+                Text(resultsHeaderTitle)
                     .font(.headline)
                 if discoverSession.isLoading {
                     ProgressView().controlSize(.small)
@@ -149,6 +159,23 @@ struct BottlesListView: View {
 
     private var librarySection: some View {
         VStack(spacing: 6) {
+            Capsule()
+                .fill(TraquilaTheme.tileLine.opacity(0.7))
+                .frame(width: 42, height: 4)
+                .padding(.top, 8)
+                .padding(.bottom, 2)
+                .accessibilityHidden(true)
+                .gesture(
+                    DragGesture(minimumDistance: 14)
+                        .onEnded { value in
+                            if value.translation.height < -28 {
+                                libraryExpanded = true
+                            } else if value.translation.height > 28 {
+                                libraryExpanded = false
+                            }
+                        }
+                )
+
             HStack {
                 Text("Library")
                     .font(.title3.bold())
@@ -159,6 +186,13 @@ struct BottlesListView: View {
             }
             .padding(.horizontal)
             .padding(.top, 8)
+
+            HStack(spacing: 10) {
+                ChipView(title: LocalizedStringKey("Bottles \(bottles.reduce(0) { $0 + max(1, $1.quantityOwned) })"), icon: "shippingbox")
+                ChipView(title: LocalizedStringKey("Open \(bottles.filter { $0.openedDate != nil }.count)"), icon: "lock.open")
+                ChipView(title: LocalizedStringKey(cellarValueLabel), icon: "dollarsign.circle")
+            }
+            .padding(.horizontal)
 
             Picker("Filter", selection: $filter) {
                 ForEach(BottleListFilter.allCases) { item in
@@ -239,6 +273,19 @@ struct BottlesListView: View {
             }
         }
         .background(.background)
+        .clipShape(
+            UnevenRoundedRectangle(
+                topLeadingRadius: 18,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: 18
+            )
+        )
+        .onChange(of: isSearchFocused) { _, focused in
+            if focused {
+                libraryExpanded = false
+            }
+        }
     }
 
     private func searchResultRow(_ item: DiscoverBottle) -> some View {
@@ -268,7 +315,7 @@ struct BottlesListView: View {
                     } label: {
                         Image(systemName: isInWishlist(item) ? "checkmark" : "bookmark")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.plain)
                     .disabled(isInWishlist(item))
                     .accessibilityLabel(isInWishlist(item) ? "Already in Wishlist" : "Add to Wishlist")
 
@@ -318,7 +365,7 @@ struct BottlesListView: View {
                     Image(systemName: isInWishlist(item) ? "checkmark" : "bookmark")
                         .frame(width: 24, height: 24)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
                 .controlSize(.mini)
                 .disabled(isInWishlist(item))
                 .accessibilityLabel(isInWishlist(item) ? "Already in Wishlist" : "Add to Wishlist")
@@ -351,7 +398,20 @@ struct BottlesListView: View {
         if discoverSession.query.trimmed.isEmpty {
             return DiscoverService.popular()
         }
+        if discoverSession.results.isEmpty {
+            return DiscoverService.popular()
+        }
         return discoverSession.results
+    }
+
+    private var resultsHeaderTitle: String {
+        if discoverSession.query.trimmed.isEmpty {
+            return "Popular Selections"
+        }
+        if discoverSession.results.isEmpty {
+            return "Popular (No direct match)"
+        }
+        return "Search Results"
     }
 
     private var countLabel: String {
@@ -361,12 +421,19 @@ struct BottlesListView: View {
         return "\(filteredBottles.count)"
     }
 
+    private var cellarValueLabel: String {
+        let total = bottles.reduce(0.0) { partial, bottle in
+            partial + ((bottle.pricePaid ?? 0) * Double(max(1, bottle.quantityOwned)))
+        }
+        return TraquilaFormatters.currency.string(from: NSNumber(value: total)) ?? "$0"
+    }
+
     private var filteredBottles: [Bottle] {
         bottles.filter { bottle in
             switch filter {
-            case .all:
+            case .cellar:
                 true
-            case .favorites:
+            case .topRated:
                 bottle.rating >= 4
             case .recent:
                 bottle.createdAt > Calendar.current.date(byAdding: .day, value: -30, to: .now) ?? .distantPast

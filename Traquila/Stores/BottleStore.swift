@@ -25,6 +25,10 @@ final class BottleStore {
         notes: String,
         rating: Double,
         bottleSizeML: Int?,
+        openedDate: Date?,
+        fillLevelPercent: Double,
+        quantityOwned: Int,
+        cellarLocation: String?,
         photoData: [Data]
     ) throws {
         let bottle = Bottle(
@@ -38,7 +42,11 @@ final class BottleStore {
             purchaseDate: purchaseDate,
             notes: notes,
             rating: rating,
-            bottleSizeML: bottleSizeML
+            bottleSizeML: bottleSizeML,
+            openedDate: openedDate,
+            fillLevelPercent: fillLevelPercent,
+            quantityOwned: quantityOwned,
+            cellarLocation: cellarLocation?.nilIfEmpty
         )
 
         for (index, data) in photoData.prefix(3).enumerated() {
@@ -63,6 +71,10 @@ final class BottleStore {
         notes: String,
         rating: Double,
         bottleSizeML: Int?,
+        openedDate: Date?,
+        fillLevelPercent: Double,
+        quantityOwned: Int,
+        cellarLocation: String?,
         photoData: [Data]
     ) throws {
         bottle.name = name
@@ -76,6 +88,10 @@ final class BottleStore {
         bottle.notes = notes
         bottle.rating = rating
         bottle.bottleSizeML = bottleSizeML
+        bottle.openedDate = openedDate
+        bottle.fillLevelPercent = max(0, min(100, fillLevelPercent))
+        bottle.quantityOwned = max(1, quantityOwned)
+        bottle.cellarLocation = cellarLocation?.nilIfEmpty
         bottle.updatedAt = .now
 
         for photo in bottle.photos {

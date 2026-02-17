@@ -380,6 +380,10 @@ struct DiscoverView: View {
             notes: "Added from Discover",
             rating: 0,
             bottleSizeML: 750,
+            openedDate: nil,
+            fillLevelPercent: 100,
+            quantityOwned: 1,
+            cellarLocation: nil,
             photoData: []
         )
 
@@ -418,6 +422,10 @@ struct DiscoverView: View {
             notes: "Moved from Wishlist",
             rating: 0,
             bottleSizeML: 750,
+            openedDate: nil,
+            fillLevelPercent: 100,
+            quantityOwned: 1,
+            cellarLocation: nil,
             photoData: []
         )
         modelContext.delete(item)

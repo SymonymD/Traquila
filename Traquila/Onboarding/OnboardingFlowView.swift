@@ -1,27 +1,23 @@
+import SwiftData
 import SwiftUI
-import UserNotifications
+import Combine
 
 enum OnboardingStep: Int, CaseIterable {
     case welcome
     case howItWorks
-    case preferences
-    case notifications
-    case personalization
+    case createProfile
 }
 
 struct OnboardingFlowView: View {
+    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var settings: AppSettings
 
     @State private var step: OnboardingStep = .welcome
-    @State private var preferences: UserPreferences
-    @State private var requestStatusText: String?
-    @State private var askToAddFirstBottle = false
-    @State private var showFirstBottleSheet = false
-    @State private var hasLoadedInitialPreferences = false
-
-    init() {
-        _preferences = State(initialValue: .default)
-    }
+    @State private var displayName = ""
+    @State private var experienceLevel: ExperienceLevel?
+    @State private var preferredStyles: Set<BottleType> = []
+    @State private var preferredContexts: Set<EnjoymentContextOption> = []
+    @State private var cabinetIntent: CabinetIntent?
 
     var body: some View {
         ZStack {
@@ -39,18 +35,13 @@ struct OnboardingFlowView: View {
 
             content
                 .padding()
-                .transition(.asymmetric(insertion: .move(edge: .trailing).combined(with: .opacity), removal: .move(edge: .leading).combined(with: .opacity)))
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    )
+                )
                 .animation(.easeInOut(duration: 0.28), value: step)
-        }
-        .sheet(isPresented: $showFirstBottleSheet) {
-            NavigationStack {
-                BottleEditView()
-            }
-        }
-        .onAppear {
-            guard !hasLoadedInitialPreferences else { return }
-            preferences = settings.userPreferences
-            hasLoadedInitialPreferences = true
         }
     }
 
@@ -63,37 +54,27 @@ struct OnboardingFlowView: View {
             }
         case .howItWorks:
             HowItWorksStep {
-                advanceTo(.preferences)
+                advanceTo(.createProfile)
             }
-        case .preferences:
-            PreferencesStep(preferences: $preferences) {
-                if shouldShowNotificationsStep {
-                    advanceTo(.notifications)
-                } else {
-                    advanceTo(.personalization)
-                }
-            }
-        case .notifications:
-            NotificationsStep(statusText: $requestStatusText) {
-                requestNotificationsAndContinue()
-            } onSkip: {
-                advanceTo(.personalization)
-            }
-        case .personalization:
-            PersonalizationStep(
-                selectedTypes: Binding(
-                    get: { Set(preferences.favoriteTypes) },
-                    set: { preferences.favoriteTypes = Array($0).sorted { $0.rawValue < $1.rawValue } }
-                ),
-                addFirstBottle: $askToAddFirstBottle
+        case .createProfile:
+            CreateProfileStep(
+                displayName: $displayName,
+                experienceLevel: $experienceLevel,
+                preferredStyles: $preferredStyles,
+                preferredContexts: $preferredContexts,
+                cabinetIntent: $cabinetIntent
             ) {
+                finishOnboarding()
+            } onSkip: {
+                if displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    displayName = "Amigo"
+                }
+                if experienceLevel == nil {
+                    experienceLevel = .curious
+                }
                 finishOnboarding()
             }
         }
-    }
-
-    private var shouldShowNotificationsStep: Bool {
-        preferences.responsibleNudgesEnabled && (preferences.hydrationReminderEnabled || preferences.pacingTimerEnabled)
     }
 
     private func advanceTo(_ next: OnboardingStep) {
@@ -103,26 +84,37 @@ struct OnboardingFlowView: View {
         }
     }
 
-    private func requestNotificationsAndContinue() {
-        Task {
-            let granted = await NotificationPermissionService.requestPermission()
-            await MainActor.run {
-                requestStatusText = granted ? "Notifications enabled." : "Notifications remain off. You can change this later in Settings."
-                advanceTo(.personalization)
-            }
-        }
-    }
-
     private func finishOnboarding() {
-        SettingsCoordinator.apply(preferences, to: settings)
+        persistProfile()
         settings.markOnboardingComplete()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
 
-        if askToAddFirstBottle {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                showFirstBottleSheet = true
-            }
+    private func persistProfile() {
+        let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let finalName = trimmedName.isEmpty ? "Amigo" : trimmedName
+        let finalLevel = experienceLevel ?? .curious
+
+        let descriptor = FetchDescriptor<UserProfile>()
+        if let existing = try? modelContext.fetch(descriptor).first {
+            existing.displayName = finalName
+            existing.experienceLevel = finalLevel
+            existing.preferredStyles = Array(preferredStyles).sorted { $0.rawValue < $1.rawValue }
+            existing.preferredContexts = Array(preferredContexts).sorted { $0.rawValue < $1.rawValue }
+            existing.cabinetIntent = cabinetIntent
+            existing.updatedAt = .now
+        } else {
+            let profile = UserProfile(
+                displayName: finalName,
+                experienceLevelRaw: finalLevel.rawValue,
+                preferredStylesRaw: Array(preferredStyles).sorted { $0.rawValue < $1.rawValue }.map(\.rawValue),
+                preferredContextsRaw: Array(preferredContexts).sorted { $0.rawValue < $1.rawValue }.map(\.rawValue),
+                cabinetIntentRaw: cabinetIntent?.rawValue
+            )
+            modelContext.insert(profile)
         }
+
+        try? modelContext.save()
     }
 }
 
@@ -134,11 +126,11 @@ private struct WelcomeStep: View {
             Spacer()
             TraquilaLogoView(inkColor: .white)
                 .accessibilityAddTraits(.isHeader)
-            Text("Track your tequila and mezcal, log each pour, and use insights to enjoy more intentionally.")
+            Text("Your digital tequila cabinet and tasting journal.")
                 .font(TraquilaTheme.headingFont())
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white.opacity(0.95))
-            Text("A personal tasting and pour tracker for mindful drinking.")
+            Text("Track bottles, capture memorable experiences, and build your personal taste map.")
                 .font(TraquilaTheme.bodyFont())
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.white.opacity(0.88))
@@ -164,11 +156,15 @@ private struct WelcomeStep: View {
 private struct HowItWorksStep: View {
     let onContinue: () -> Void
     @State private var page = 0
+    @State private var animatePanel = false
+    @State private var isUserInteracting = false
+
+    private let autoAdvanceTimer = Timer.publish(every: 4.0, on: .main, in: .common).autoconnect()
 
     private let panels: [(icon: String, title: String, body: String)] = [
-        ("wineglass", "Catalog bottles", "Save what you drink: bottle details, ratings, tasting notes, and photos."),
-        ("list.bullet.clipboard", "Log pours", "Record each pour with amount, serve style, and context so your history is clear."),
-        ("chart.line.uptrend.xyaxis", "Insights + pacing", "See weekly/monthly trends and use pacing reminders for intentional sessions.")
+        ("archivebox", "Curate your cabinet", "Save bottles with expression, region, notes, and photos."),
+        ("square.and.pencil", "Capture each tasting", "Log where and how you enjoyed it with a quick rating."),
+        ("chart.line.uptrend.xyaxis", "Learn your preferences", "See top bottles, favorite styles, and standout experiences.")
     ]
 
     var body: some View {
@@ -176,7 +172,7 @@ private struct HowItWorksStep: View {
             Text("How It Works")
                 .font(TraquilaTheme.titleFont())
                 .foregroundStyle(.white)
-            Text("Traquila helps you remember what you liked, how much you poured, and your overall patterns.")
+            Text("Traquila helps you remember what you loved and discover what to reach for next.")
                 .font(TraquilaTheme.bodyFont())
                 .foregroundStyle(.white.opacity(0.9))
                 .multilineTextAlignment(.center)
@@ -184,20 +180,13 @@ private struct HowItWorksStep: View {
 
             TabView(selection: $page) {
                 ForEach(Array(panels.enumerated()), id: \.offset) { idx, panel in
-                    VStack(spacing: 14) {
-                        Image(systemName: panel.icon)
-                            .font(.system(size: 52, weight: .semibold))
-                            .foregroundStyle(TraquilaTheme.marigold)
-                            .symbolEffect(.appear)
-                        Text(panel.title)
-                            .font(TraquilaTheme.headingFont())
-                            .foregroundStyle(.white)
-                        Text(panel.body)
-                            .font(TraquilaTheme.bodyFont())
-                            .foregroundStyle(.white.opacity(0.92))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                    }
+                    HowItWorksPanel(
+                        icon: panel.icon,
+                        title: panel.title,
+                        detail: panel.body,
+                        isActive: page == idx,
+                        animatePanel: animatePanel
+                    )
                     .tag(idx)
                     .padding(.top, 20)
                     .transition(.opacity.combined(with: .slide))
@@ -205,6 +194,32 @@ private struct HowItWorksStep: View {
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
             .frame(height: 320)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        isUserInteracting = true
+                    }
+                    .onEnded { _ in
+                        isUserInteracting = false
+                    }
+            )
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.45)) {
+                    animatePanel = true
+                }
+            }
+            .onChange(of: page) { _, _ in
+                animatePanel = false
+                withAnimation(.easeOut(duration: 0.45)) {
+                    animatePanel = true
+                }
+            }
+            .onReceive(autoAdvanceTimer) { _ in
+                guard !isUserInteracting else { return }
+                withAnimation(.easeInOut(duration: 0.35)) {
+                    page = (page + 1) % panels.count
+                }
+            }
 
             Button("Continue", action: onContinue)
                 .buttonStyle(OnboardingPrimaryButtonStyle())
@@ -213,157 +228,238 @@ private struct HowItWorksStep: View {
     }
 }
 
-private struct PreferencesStep: View {
-    @Binding var preferences: UserPreferences
-    let onContinue: () -> Void
+private struct HowItWorksPanel: View {
+    let icon: String
+    let title: String
+    let detail: String
+    let isActive: Bool
+    let animatePanel: Bool
+
+    @State private var floatIcon = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Text("Your Preferences")
-                    .font(TraquilaTheme.titleFont())
-                    .foregroundStyle(.white)
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(TraquilaTheme.marigold.opacity(0.18))
+                    .frame(width: 90, height: 90)
+                    .scaleEffect(isActive ? 1.0 : 0.94)
+                    .opacity(isActive ? 1.0 : 0.7)
 
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 14) {
-                        Picker("Units", selection: $preferences.units) {
-                            ForEach(MeasurementUnit.allCases) { unit in
-                                Text(unit.label).tag(unit)
-                            }
-                        }
-                        .pickerStyle(.segmented)
+                Image(systemName: icon)
+                    .font(.system(size: 48, weight: .semibold))
+                    .foregroundStyle(TraquilaTheme.marigold)
+                    .offset(y: (isActive && floatIcon) ? -3 : 2)
+                    .scaleEffect(isActive ? 1.0 : 0.96)
+            }
+            .padding(.bottom, 4)
 
-                        Picker("Theme", selection: $preferences.theme) {
-                            ForEach(AppTheme.allCases) { theme in
-                                Text(theme.label).tag(theme)
-                            }
-                        }
-                        .pickerStyle(.segmented)
+            Text(title)
+                .font(TraquilaTheme.headingFont())
+                .foregroundStyle(.white)
+                .opacity(animatePanel ? 1 : 0)
+                .offset(y: animatePanel ? 0 : 8)
+                .animation(.easeOut(duration: 0.28).delay(0.05), value: animatePanel)
 
-                        Toggle("Enable Responsible Nudges", isOn: $preferences.responsibleNudgesEnabled.animation())
-
-                        if preferences.responsibleNudgesEnabled {
-                            Toggle("Pacing Timer", isOn: $preferences.pacingTimerEnabled)
-                            Toggle("Hydration Reminder", isOn: $preferences.hydrationReminderEnabled)
-                        }
-                    }
-                    .tint(TraquilaTheme.terracotta)
-                }
-                .groupBoxStyle(OnboardingGroupStyle())
-
-                Button("Continue", action: onContinue)
-                    .buttonStyle(OnboardingPrimaryButtonStyle())
-                    .accessibilityLabel("Save preferences and continue")
+            Text(detail)
+                .font(TraquilaTheme.bodyFont())
+                .foregroundStyle(.white.opacity(0.92))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+                .opacity(animatePanel ? 1 : 0)
+                .offset(y: animatePanel ? 0 : 10)
+                .animation(.easeOut(duration: 0.32).delay(0.12), value: animatePanel)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 18)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(.white.opacity(0.24), lineWidth: 1)
+        )
+        .opacity(animatePanel ? 1 : 0.85)
+        .offset(y: animatePanel ? 0 : 10)
+        .animation(.easeOut(duration: 0.4), value: animatePanel)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.7).repeatForever(autoreverses: true)) {
+                floatIcon = true
             }
         }
     }
 }
 
-private struct NotificationsStep: View {
-    @Binding var statusText: String?
-    let onAllow: () -> Void
+private struct CreateProfileStep: View {
+    @Binding var displayName: String
+    @Binding var experienceLevel: ExperienceLevel?
+    @Binding var preferredStyles: Set<BottleType>
+    @Binding var preferredContexts: Set<EnjoymentContextOption>
+    @Binding var cabinetIntent: CabinetIntent?
+
+    let onContinue: () -> Void
     let onSkip: () -> Void
 
-    var body: some View {
-        VStack(spacing: 16) {
-            Spacer()
-            Image(systemName: "bell.badge")
-                .font(.system(size: 52, weight: .medium))
-                .foregroundStyle(TraquilaTheme.marigold)
-
-            Text("Stay in Rhythm")
-                .font(TraquilaTheme.titleFont())
-                .foregroundStyle(.white)
-
-            Text("Allow notifications so Traquila can deliver pacing and hydration reminders when you choose to use them.")
-                .font(TraquilaTheme.bodyFont())
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.white.opacity(0.95))
-
-            if let statusText {
-                Text(statusText)
-                    .font(TraquilaTheme.captionFont())
-                    .foregroundStyle(.white.opacity(0.88))
-                    .multilineTextAlignment(.center)
-            }
-
-            Button("Allow Notifications", action: onAllow)
-                .buttonStyle(OnboardingPrimaryButtonStyle())
-                .accessibilityLabel("Allow notifications")
-            Button("Skip") {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                onSkip()
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.white.opacity(0.95))
-            Spacer()
-        }
+    private var isValid: Bool {
+        !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && experienceLevel != nil
     }
-}
-
-private struct PersonalizationStep: View {
-    @State private var availableTypes: [BottleType] = [.blanco, .reposado, .anejo, .mezcal]
-    @Binding var selectedTypes: Set<BottleType>
-    @Binding var addFirstBottle: Bool
-    let onEnter: () -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Personalize")
-                    .font(TraquilaTheme.titleFont())
-                    .foregroundStyle(.white)
+        VStack(spacing: 12) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Create Your Profile")
+                        .font(TraquilaTheme.titleFont())
+                        .foregroundStyle(.white)
 
-                Text("What styles do you enjoy most?")
-                    .font(TraquilaTheme.headingFont())
-                    .foregroundStyle(.white)
+                    TextField("What should we call you?", text: $displayName)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .textFieldStyle(.plain)
+                        .foregroundColor(.black)
+                        .tint(Color(red: 0.30, green: 0.20, blue: 0.16))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(Color.white.opacity(0.9), in: RoundedRectangle(cornerRadius: 12))
+                        .environment(\.colorScheme, .light)
+                        .accessibilityLabel("Display name")
 
-                FlexibleChipLayout(items: availableTypes, selected: $selectedTypes)
+                    if !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("\(displayName.trimmingCharacters(in: .whitespacesAndNewlines))'s Cabinet")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
 
-                Toggle("Add my first bottle now", isOn: $addFirstBottle)
-                    .tint(TraquilaTheme.marigold)
-                    .foregroundStyle(.white)
-                    .accessibilityLabel("Add first bottle after onboarding")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Experience Level")
+                            .font(TraquilaTheme.headingFont())
+                            .foregroundStyle(.white)
+                        ForEach(ExperienceLevel.allCases) { level in
+                            Button {
+                                experienceLevel = level
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Image(systemName: experienceLevel == level ? "checkmark.circle.fill" : "circle")
+                                        Text(level.rawValue)
+                                            .font(.headline)
+                                    }
+                                    Text(level.helperText)
+                                        .font(.caption)
+                                        .foregroundStyle(Color(red: 0.30, green: 0.27, blue: 0.24))
+                                }
+                                .padding(12)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color.white.opacity(experienceLevel == level ? 0.92 : 0.80))
+                                )
+                                .foregroundStyle(Color(red: 0.14, green: 0.12, blue: 0.11))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(level.rawValue)
+                        }
+                    }
 
-                Button("Enter Traquila") {
-                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-                    onEnter()
+                    Text("Preferred Styles (optional)")
+                        .font(TraquilaTheme.headingFont())
+                        .foregroundStyle(.white)
+                    MultiSelectChipGroup(
+                        items: BottleType.allCases,
+                        selected: $preferredStyles,
+                        label: { $0.rawValue }
+                    )
+
+                    Text("Typical Enjoyment Context (optional)")
+                        .font(TraquilaTheme.headingFont())
+                        .foregroundStyle(.white)
+                    MultiSelectChipGroup(
+                        items: EnjoymentContextOption.allCases,
+                        selected: $preferredContexts,
+                        label: { $0.rawValue }
+                    )
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Cabinet Intent (optional)")
+                            .font(TraquilaTheme.headingFont())
+                            .foregroundStyle(.white)
+                        Picker("Cabinet Intent", selection: $cabinetIntent) {
+                            Text("None").tag(nil as CabinetIntent?)
+                            ForEach(CabinetIntent.allCases) { intent in
+                                Text(intent.rawValue).tag(Optional(intent))
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .foregroundStyle(Color(red: 0.14, green: 0.12, blue: 0.11))
+                        .tint(Color(red: 0.30, green: 0.20, blue: 0.16))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.86), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+            }
+
+            VStack(spacing: 10) {
+                Button("Continue") {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onContinue()
                 }
                 .buttonStyle(OnboardingPrimaryButtonStyle())
-                .accessibilityLabel("Enter Traquila")
+                .disabled(!isValid)
+                .opacity(isValid ? 1 : 0.65)
+                .accessibilityLabel("Continue")
+
+                HStack {
+                    Spacer()
+                    Button("Skip for now") {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onSkip()
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.95))
+                    .accessibilityLabel("Skip for now")
+                    Spacer()
+                }
             }
+            .padding(.bottom, 6)
         }
     }
 }
 
-private struct FlexibleChipLayout: View {
-    let items: [BottleType]
-    @Binding var selected: Set<BottleType>
+private struct MultiSelectChipGroup<Item: Hashable & Identifiable>: View {
+    let items: [Item]
+    @Binding var selected: Set<Item>
+    let label: (Item) -> String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ForEach(items, id: \.self) { type in
+        let columns = [GridItem(.adaptive(minimum: 110), spacing: 8)]
+
+        return LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            ForEach(items) { item in
                 Button {
-                    if selected.contains(type) {
-                        selected.remove(type)
+                    if selected.contains(item) {
+                        selected.remove(item)
                     } else {
-                        selected.insert(type)
+                        selected.insert(item)
                     }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 } label: {
-                    HStack {
-                        Image(systemName: selected.contains(type) ? "checkmark.circle.fill" : "circle")
-                        Text(type.rawValue)
-                    }
-                    .font(.headline)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(selected.contains(type) ? TraquilaTheme.marigold.opacity(0.85) : Color.white.opacity(0.14), in: Capsule())
-                    .foregroundStyle(selected.contains(type) ? TraquilaTheme.charcoal : .white)
+                    Text(label(item))
+                        .font(.subheadline)
+                        .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            Capsule()
+                                .fill(selected.contains(item) ? TraquilaTheme.marigold.opacity(0.9) : Color.white.opacity(0.16))
+                        )
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.35), lineWidth: 1)
+                        )
+                        .foregroundStyle(selected.contains(item) ? TraquilaTheme.charcoal : .white)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(type.rawValue)
-                .accessibilityHint("Double tap to select")
+                .accessibilityLabel(label(item))
             }
         }
     }
@@ -393,32 +489,11 @@ private struct OnboardingPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
-            .foregroundStyle(TraquilaTheme.charcoal)
+            .foregroundStyle(Color(red: 0.14, green: 0.12, blue: 0.11))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
             .background(.white.opacity(configuration.isPressed ? 0.78 : 0.92), in: RoundedRectangle(cornerRadius: 14))
             .scaleEffect(configuration.isPressed ? 0.99 : 1)
             .animation(.easeOut(duration: 0.18), value: configuration.isPressed)
-    }
-}
-
-private struct OnboardingGroupStyle: GroupBoxStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            configuration.content
-        }
-        .padding(14)
-        .background(Color.white.opacity(0.88), in: RoundedRectangle(cornerRadius: 14))
-    }
-}
-
-@MainActor
-enum NotificationPermissionService {
-    static func requestPermission() async -> Bool {
-        do {
-            return try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
-        } catch {
-            return false
-        }
     }
 }

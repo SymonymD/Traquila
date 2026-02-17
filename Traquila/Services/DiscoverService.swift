@@ -18,13 +18,18 @@ struct StaticCatalogDiscoverProvider: DiscoverProviding {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
 
-        return DiscoverService.curatedCatalog.filter { bottle in
+        let strict = DiscoverService.curatedCatalog.filter { bottle in
             bottle.name.localizedCaseInsensitiveContains(trimmed)
                 || bottle.brand.localizedCaseInsensitiveContains(trimmed)
                 || (bottle.nom?.localizedCaseInsensitiveContains(trimmed) ?? false)
                 || bottle.type.rawValue.localizedCaseInsensitiveContains(trimmed)
         }
         .sorted { $0.name < $1.name }
+
+        if !strict.isEmpty {
+            return strict
+        }
+        return DiscoverService.looseCatalogSearch(trimmed)
     }
 }
 
@@ -135,7 +140,8 @@ enum DiscoverService {
 
         switch sourceMode {
         case .curatedLocal:
-            return (try? await fallbackProvider.search(trimmed)) ?? []
+            let local = (try? await fallbackProvider.search(trimmed)) ?? []
+            return local.isEmpty ? looseCatalogSearch(trimmed) : local
 
         case .hybrid:
             do {
@@ -147,7 +153,8 @@ enum DiscoverService {
                 // Ignore and fall back to curated static catalog.
             }
 
-            return (try? await fallbackProvider.search(trimmed)) ?? []
+            let local = (try? await fallbackProvider.search(trimmed)) ?? []
+            return local.isEmpty ? looseCatalogSearch(trimmed) : local
 
         case .premium:
             do {
@@ -158,8 +165,44 @@ enum DiscoverService {
             } catch {
                 // Ignore and fall back to curated static catalog.
             }
-            return (try? await fallbackProvider.search(trimmed)) ?? []
+            let local = (try? await fallbackProvider.search(trimmed)) ?? []
+            return local.isEmpty ? looseCatalogSearch(trimmed) : local
         }
+    }
+
+    static func looseCatalogSearch(_ query: String) -> [DiscoverBottle] {
+        let tokens = query
+            .lowercased()
+            .split(separator: " ")
+            .map(String.init)
+            .filter { !$0.isEmpty }
+        guard !tokens.isEmpty else { return [] }
+
+        let ranked = curatedCatalog.compactMap { bottle -> (DiscoverBottle, Int)? in
+            let blob = [
+                bottle.name.lowercased(),
+                bottle.brand.lowercased(),
+                bottle.nom?.lowercased() ?? "",
+                bottle.type.rawValue.lowercased()
+            ].joined(separator: " ")
+
+            let score = tokens.reduce(0) { partial, token in
+                if blob.contains(token) {
+                    return partial + (bottle.name.lowercased().contains(token) ? 3 : 1)
+                }
+                return partial
+            }
+            return score > 0 ? (bottle, score) : nil
+        }
+
+        return ranked
+            .sorted { lhs, rhs in
+                if lhs.1 == rhs.1 {
+                    return lhs.0.name < rhs.0.name
+                }
+                return lhs.1 > rhs.1
+            }
+            .map(\.0)
     }
 }
 

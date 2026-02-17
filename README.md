@@ -2,6 +2,10 @@
 
 Retro-modern Hispanic tequila tracker built with SwiftUI + SwiftData.
 
+## Design System
+- Canonical UI reference: `TRAQUILA_DESIGN_SYSTEM.md`
+- Use this doc for tokens, component usage, theming behavior, and accessibility guardrails before introducing new UI patterns.
+
 ## Architecture
 - `Traquila/Models`: SwiftData models (`Bottle`, `PourEntry`, `BottlePhoto`, `WishlistItem`) and domain enums.
 - `Traquila/Stores`: CRUD orchestration (`BottleStore`, `PourStore`).

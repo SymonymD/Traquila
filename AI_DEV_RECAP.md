@@ -1,6 +1,6 @@
 # AI Dev Recap
 
-Last updated: 2026-02-16 (experience dashboard + discovery strategy + tasting photo support)
+Last updated: 2026-02-17 (cabinet interactions + pour balance accounting + onboarding motion + feedback + storage cleanup)
 Project: `Traquila` (Xcode 26.2, SwiftUI + SwiftData)
 
 ## Purpose
@@ -30,20 +30,56 @@ This file tracks implementation progress between AI sessions so work can continu
 - Pour logging now supports optional photo upload (PhotosPicker), preview, removal, persistence, and detail display.
 - Existing tasting logs are now explicitly editable from the detail screen via an `Edit` button.
 - Debug-only mock data seeder added for quick market/demo testing when database is empty.
+- Added new onboarding step: `Create Your Profile` (after How It Works, before Preferences).
+- New `UserProfile` SwiftData model persists:
+  - display name
+  - experience level
+  - preferred styles
+  - typical enjoyment contexts
+  - cabinet intent
+  - timestamps
+- Onboarding now validates required profile fields (display name + experience level) for Continue, with explicit skip defaults.
+- Onboarding flow simplified to 3 steps only: Welcome -> How It Works -> Create Profile.
+- Removed legacy onboarding screens (`Your Preferences`, `Personalize`, and notifications prompt) to reduce friction.
+- `Skip for now` on profile step is now centered at the bottom for cleaner CTA hierarchy.
+- Settings now includes Profile section to view/edit profile fields and reset onboarding with optional profile clear.
+- Dark mode now applies immediately when changed in Settings, and theme colors are adaptive for light/dark palettes.
+- Theme enforcement hardened across app root/coordinator; runtime interface style is now applied from `AppSettings` and app-level routing uses explicit theme propagation.
+- Added and then removed temporary Theme Debug section in Settings after diagnosing theme state vs rendering.
+- Settings `Responsible Use` section removed per product direction.
+- Onboarding form contrast polished:
+  - profile text field now forces dark typed text on light field background
+  - experience-level option cards now use explicit dark text on light cards
+  - onboarding primary button text contrast fixed against light button backgrounds
+- Added `TRAQUILA_DESIGN_SYSTEM.md` as the UI source of truth for future iterations.
 - Core flows are functional end-to-end:
   - Bottle library (CRUD, rating, notes, photos)
   - Pour/tasting logging (CRUD, timeline, filtering/search, optional photo)
   - Experience dashboard (filtered rankings + trend + preference snapshot)
   - Settings (theme, units, discovery source mode, responsible-use toggles, JSON export, import stub)
 - Metadata file pollution cleanup completed (`._*`), and ignore rules added.
+- Cabinet library filters finalized to `Cellar / Top Rated / Recent / Wishlist`; source selection added in Log bottle picker (`My Bottle` vs `At Restaurant`).
+- Library pane on Cabinet now supports drag-resize between ~1/3 and ~2/3 screen height; focusing search collapses back to ~1/3.
+- Library pane visual polish: rounded top-left/top-right corners and drag handle affordance.
+- Wishlist icon styling in Popular/Search results changed to plain icon (no filled/bordered background).
+- Pour volume accounting implemented: pours from `My Bottle` now decrement bottle balance (`fillLevelPercent`) and edits/deletes correctly rebalance.
+- Onboarding `How It Works` upgraded with restrained motion system (staggered fade/slide, floating icons, material cards) plus auto-advance carousel (~4s) that pauses during user interaction.
+- Settings now includes a `Feedback` section:
+  - `Send Feedback` opens prefilled email template (version/device/profile context).
+  - `Copy Feedback Template` copies structured report text to clipboard.
+- Verified no direct MapKit Snapshot API usage in Traquila source (`MKMapSnapshotter`/MapKit import absent); observed snapshot service process is simulator-level system runtime activity.
+- Local storage audit + cleanup performed:
+  - Cleared Xcode Previews cache, DerivedData, iOS DeviceSupport, and CoreSimulator caches.
+  - Reclaimed ~24GB+ disk.
+  - Remaining large footprint primarily in CoreSimulator devices/runtimes.
 
 ## Architecture Snapshot
 - `Traquila/Models`
-  - `Bottle`, `PourEntry`, `BottlePhoto`, `WishlistItem`
+  - `Bottle`, `PourEntry`, `BottlePhoto`, `WishlistItem`, `UserProfile`
   - Domain enums for bottle type, region, serve style, context, etc.
 - `Traquila/Stores`
   - `BottleStore` (CRUD + photo handling)
-  - `PourStore` (CRUD)
+  - `PourStore` (CRUD + cellar balance adjustments on create/update/delete)
 - `Traquila/Services`
   - `InsightsService` (aggregations/trends + sample helpers)
   - `DiscoverService` (source strategy: curated/hybrid/premium-stub)
@@ -54,9 +90,10 @@ This file tracks implementation progress between AI sessions so work can continu
   - Cabinet (formerly Bottles): integrated search/popular results + library/wishlist filters, plus detail/edit
   - Log: timeline/add/detail (+ photo support, explicit detail edit)
   - Insights: Experience Dashboard (filter chips, ranked sections, trend)
-  - Settings: app and data options
+  - Settings: app/data options + editable profile + feedback entry points
 - `Traquila/Components` + `Traquila/DesignSystem`
   - Theme, reusable cards/chips/star rating/empty state/talavera header motif
+  - Design reference doc: `TRAQUILA_DESIGN_SYSTEM.md`
 - App shell
   - `Traquila/TraquilaApp.swift` sets up SwiftData container and global theme mode
   - `Traquila/App/RootTabView.swift` provides 4-tab navigation
@@ -72,6 +109,19 @@ This file tracks implementation progress between AI sessions so work can continu
 ## Validation Notes
 - Build check succeeded:
   - `xcodebuild -scheme Traquila -destination 'platform=iOS Simulator,name=iPhone 17' build`
+- Build check re-run after onboarding/theme changes succeeded:
+  - `xcodebuild -scheme Traquila -destination 'platform=iOS Simulator,name=iPhone 17' build`
+- Build re-run multiple times after theme and onboarding contrast patches; latest run succeeded:
+  - `xcodebuild -scheme Traquila -destination 'platform=iOS Simulator,name=iPhone 17' build`
+- Build succeeded after pour-balance accounting changes:
+  - `xcodebuild -scheme Traquila -destination 'platform=iOS Simulator,name=iPhone 17' build`
+- Build succeeded after Cabinet resizable Library panel + top corner rounding:
+  - `xcodebuild -scheme Traquila -destination 'platform=iOS Simulator,name=iPhone 17' build`
+- Build succeeded after onboarding animation + autoplay updates:
+  - `xcodebuild -scheme Traquila -destination 'platform=iOS Simulator,name=iPhone 17' build`
+- Build succeeded after Settings feedback section implementation:
+  - `xcodebuild -scheme Traquila -destination 'platform=iOS Simulator,name=iPhone 17' build`
+- Environment note during cleanup: `simctl` temporarily reported CoreSimulatorService connection invalid; cache cleanup still completed, but unavailable-device pruning should be rerun after reboot.
 - Unit test target compiles; simulator test execution was unstable/hanging in this environment, so full automated run completion was not consistently captured.
 
 ## Repo Hygiene
@@ -88,6 +138,8 @@ This file tracks implementation progress between AI sessions so work can continu
 - Validate onboarding transitions and sheet handoff in live simulator UX pass.
 - Wire a real paid tequila catalog/provider into `Premium Catalog` mode when demand validates.
 - Consider switching hybrid live provider from generic product search to tequila-specific source when available.
+- Optionally use profile values to pre-seed Insights filters and personalize cabinet headings across tabs.
+- Replace hardcoded feedback recipient (`hello@traquila.app`) with configurable app setting or environment-driven value before wider distribution.
 - Optional enhancement: implement local notification permission flow for hydration reminders.
 - Optional enhancement: make import flow functional (currently disabled stub by design).
 - Optional enhancement: add additional tests for export formatting and search/filter logic.

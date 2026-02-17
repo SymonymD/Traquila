@@ -38,6 +38,72 @@ struct BottleDetailView: View {
                     }
                 }
 
+                TraquilaCard(accent: TraquilaTheme.marigold) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Lifecycle")
+                            .font(.headline)
+
+                        HStack {
+                            Text("Status")
+                            Spacer()
+                            Text(bottle.openedDate == nil ? "Sealed" : "Opened")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if let openedDate = bottle.openedDate {
+                            HStack {
+                                Text("Opened On")
+                                Spacer()
+                                Text(openedDate, format: .dateTime.month(.abbreviated).day().year())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Fill Level")
+                                Spacer()
+                                Text("\(Int(bottle.fillLevelPercent.rounded()))%")
+                                    .foregroundStyle(.secondary)
+                            }
+                            ProgressView(value: bottle.fillLevelPercent, total: 100)
+                                .tint(TraquilaTheme.agaveGreen)
+                        }
+                    }
+                }
+
+                TraquilaCard(accent: TraquilaTheme.agaveGreen) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Cellar")
+                            .font(.headline)
+
+                        HStack {
+                            Text("Quantity Owned")
+                            Spacer()
+                            Text("\(bottle.quantityOwned)")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if let location = bottle.cellarLocation, !location.isEmpty {
+                            HStack {
+                                Text("Location")
+                                Spacer()
+                                Text(location)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        if let price = bottle.pricePaid {
+                            HStack {
+                                Text("Estimated Value")
+                                Spacer()
+                                Text(TraquilaFormatters.currency.string(from: NSNumber(value: price * Double(bottle.quantityOwned))) ?? "$0")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
                 TraquilaCard(accent: TraquilaTheme.agaveGreen) {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Recent Pours")
@@ -66,6 +132,10 @@ struct BottleDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                ShareLink(item: shareText) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Share bottle")
                 Button("Log Pour") { showingPourAdd = true }
                 Button("Edit") { showingEdit = true }
             }
@@ -80,6 +150,21 @@ struct BottleDetailView: View {
                 PourAddView(preselectedBottle: bottle)
             }
         }
+    }
+
+    private var shareText: String {
+        var lines: [String] = []
+        lines.append("Traquila Bottle")
+        lines.append(bottle.name)
+        if let brand = bottle.brand, !brand.isEmpty {
+            lines.append(brand)
+        }
+        lines.append("Type: \(bottle.type.rawValue)")
+        lines.append("Rating: \(bottle.rating.formatted(.number.precision(.fractionLength(1))))/5")
+        if !bottle.notes.isEmpty {
+            lines.append("Notes: \(bottle.notes)")
+        }
+        return lines.joined(separator: "\n")
     }
 
     private var heroSection: some View {

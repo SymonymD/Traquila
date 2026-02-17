@@ -19,6 +19,11 @@ struct BottleEditView: View {
     @State private var notes: String
     @State private var rating: Double
     @State private var bottleSizeText: String
+    @State private var isOpened: Bool
+    @State private var openedDate: Date
+    @State private var fillLevelPercent: Double
+    @State private var quantityOwned: Int
+    @State private var cellarLocation: String
     @State private var photoPickerItems: [PhotosPickerItem] = []
     @State private var photoData: [Data]
     @State private var errorText: String?
@@ -37,6 +42,11 @@ struct BottleEditView: View {
         _notes = State(initialValue: editingBottle?.notes ?? "")
         _rating = State(initialValue: editingBottle?.rating ?? 0)
         _bottleSizeText = State(initialValue: editingBottle?.bottleSizeML.map(String.init) ?? "750")
+        _isOpened = State(initialValue: editingBottle?.openedDate != nil)
+        _openedDate = State(initialValue: editingBottle?.openedDate ?? .now)
+        _fillLevelPercent = State(initialValue: editingBottle?.fillLevelPercent ?? 100)
+        _quantityOwned = State(initialValue: max(1, editingBottle?.quantityOwned ?? 1))
+        _cellarLocation = State(initialValue: editingBottle?.cellarLocation ?? "")
         _photoData = State(initialValue: editingBottle?.photos.map(\.imageData) ?? [])
     }
 
@@ -79,6 +89,25 @@ struct BottleEditView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Rating")
                     StarRatingView(rating: $rating, editable: true)
+                }
+            }
+
+            Section("Lifecycle & Cellar") {
+                Stepper("Quantity Owned: \(quantityOwned)", value: $quantityOwned, in: 1...48)
+                TextField("Cellar Location (optional)", text: $cellarLocation)
+
+                Toggle("Bottle Opened", isOn: $isOpened.animation())
+                if isOpened {
+                    DatePicker("Opened On", selection: $openedDate, displayedComponents: .date)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Fill Level")
+                            Spacer()
+                            Text("\(Int(fillLevelPercent.rounded()))%")
+                                .foregroundStyle(.secondary)
+                        }
+                        Slider(value: $fillLevelPercent, in: 0...100, step: 1)
+                    }
                 }
             }
 
@@ -163,6 +192,10 @@ struct BottleEditView: View {
                     notes: notes,
                     rating: rating,
                     bottleSizeML: bottleSize,
+                    openedDate: isOpened ? openedDate : nil,
+                    fillLevelPercent: fillLevelPercent,
+                    quantityOwned: quantityOwned,
+                    cellarLocation: cellarLocation,
                     photoData: photoData
                 )
             } else {
@@ -178,6 +211,10 @@ struct BottleEditView: View {
                     notes: notes,
                     rating: rating,
                     bottleSizeML: bottleSize,
+                    openedDate: isOpened ? openedDate : nil,
+                    fillLevelPercent: fillLevelPercent,
+                    quantityOwned: quantityOwned,
+                    cellarLocation: cellarLocation,
                     photoData: photoData
                 )
             }

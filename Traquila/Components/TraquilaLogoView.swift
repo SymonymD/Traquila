@@ -1,10 +1,24 @@
 import SwiftUI
 
 struct TraquilaLogoView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     var compact: Bool
     var inkColor: Color?
-    private var ink: Color { inkColor ?? Color(red: 0.16, green: 0.14, blue: 0.13) }
-    private var accent = Color(red: 0.42, green: 0.28, blue: 0.22)
+    private var ink: Color {
+        if let inkColor {
+            return inkColor
+        }
+        return colorScheme == .dark
+            ? Color(red: 0.90, green: 0.86, blue: 0.80)
+            : Color(red: 0.16, green: 0.14, blue: 0.13)
+    }
+
+    private var accent: Color {
+        colorScheme == .dark
+            ? Color(red: 0.82, green: 0.60, blue: 0.44)
+            : Color(red: 0.42, green: 0.28, blue: 0.22)
+    }
 
     init(compact: Bool = false, inkColor: Color? = nil) {
         self.compact = compact

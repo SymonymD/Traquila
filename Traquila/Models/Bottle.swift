@@ -16,6 +16,10 @@ final class Bottle {
     var notes: String
     var rating: Double
     var bottleSizeML: Int?
+    var openedDate: Date?
+    var fillLevelPercent: Double
+    var quantityOwned: Int
+    var cellarLocation: String?
     var createdAt: Date
     var updatedAt: Date
 
@@ -38,6 +42,10 @@ final class Bottle {
         notes: String = "",
         rating: Double = 0,
         bottleSizeML: Int? = 750,
+        openedDate: Date? = nil,
+        fillLevelPercent: Double = 100,
+        quantityOwned: Int = 1,
+        cellarLocation: String? = nil,
         createdAt: Date = .now,
         updatedAt: Date = .now
     ) {
@@ -53,6 +61,10 @@ final class Bottle {
         self.notes = notes
         self.rating = rating
         self.bottleSizeML = bottleSizeML
+        self.openedDate = openedDate
+        self.fillLevelPercent = max(0, min(100, fillLevelPercent))
+        self.quantityOwned = max(1, quantityOwned)
+        self.cellarLocation = cellarLocation
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

@@ -45,8 +45,15 @@ struct PourDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Edit") {
-                    showingEdit = true
+                HStack {
+                    ShareLink(item: shareText) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .accessibilityLabel("Share tasting")
+
+                    Button("Edit") {
+                        showingEdit = true
+                    }
                 }
             }
         }
@@ -55,5 +62,22 @@ struct PourDetailView: View {
                 PourAddView(editingPour: pour)
             }
         }
+    }
+
+    private var shareText: String {
+        var lines: [String] = []
+        lines.append("Traquila Tasting")
+        lines.append(pour.bottle.name)
+        lines.append("Date: \(pour.date.formatted(.dateTime.month().day().year().hour().minute()))")
+        lines.append("Amount: \(pour.amountOZ.formatted(.number.precision(.fractionLength(0...2)))) oz")
+        lines.append("Serve: \(pour.serve.rawValue)")
+        lines.append("Context: \(pour.context.rawValue)")
+        if let enjoyment = pour.enjoyment {
+            lines.append("Enjoyment: \(enjoyment)/5")
+        }
+        if !pour.notes.isEmpty {
+            lines.append("Notes: \(pour.notes)")
+        }
+        return lines.joined(separator: "\n")
     }
 }

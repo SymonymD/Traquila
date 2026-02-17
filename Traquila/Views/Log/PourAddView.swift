@@ -2,6 +2,13 @@ import SwiftData
 import PhotosUI
 import SwiftUI
 
+private enum BottleSourceOption: String, CaseIterable, Identifiable {
+    case cabinet = "My Bottle"
+    case restaurant = "At Restaurant"
+
+    var id: String { rawValue }
+}
+
 struct PourAddView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
@@ -24,6 +31,7 @@ struct PourAddView: View {
     @State private var notes: String
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var photoData: Data?
+    @State private var bottleSource: BottleSourceOption
 
     @State private var showingBottlePicker = false
     @State private var errorText: String?
@@ -58,6 +66,7 @@ struct PourAddView: View {
 
         _notes = State(initialValue: editingPour?.notes ?? "")
         _photoData = State(initialValue: editingPour?.photoData)
+        _bottleSource = State(initialValue: (editingPour?.context ?? .atHome) == .restaurant ? .restaurant : .cabinet)
     }
 
     var body: some View {
@@ -74,6 +83,13 @@ struct PourAddView: View {
                         Text(selectedBottle?.name ?? "Select bottle *")
                             .foregroundStyle(selectedBottle == nil ? .red : .secondary)
                     }
+                }
+
+                HStack {
+                    Text("Source")
+                    Spacer()
+                    Text(bottleSource.rawValue)
+                        .foregroundStyle(.secondary)
                 }
 
                 Picker("Amount", selection: $amountPreset) {
@@ -158,7 +174,16 @@ struct PourAddView: View {
             }
         }
         .sheet(isPresented: $showingBottlePicker) {
-            BottlePickerSheet(selectedBottleID: $selectedBottleID, bottles: bottles)
+            BottlePickerSheet(
+                selectedBottleID: $selectedBottleID,
+                bottles: bottles,
+                source: $bottleSource
+            )
+        }
+        .onChange(of: bottleSource) { _, newValue in
+            if newValue == .restaurant {
+                contextTag = .restaurant
+            }
         }
         .task(id: selectedPhotoItem) {
             await loadSelectedPhoto()
@@ -200,6 +225,7 @@ struct PourAddView: View {
                     amountOZ: amountOZ,
                     serve: serve,
                     contextTag: contextTag,
+                    countAgainstCellar: bottleSource == .cabinet,
                     enjoyment: includeEnjoyment ? Int(enjoyment) : nil,
                     nextDayFeel: includeNextDayFeel ? Int(nextDayFeel) : nil,
                     notes: notes,
@@ -212,6 +238,7 @@ struct PourAddView: View {
                     amountOZ: amountOZ,
                     serve: serve,
                     contextTag: contextTag,
+                    countAgainstCellar: bottleSource == .cabinet,
                     enjoyment: includeEnjoyment ? Int(enjoyment) : nil,
                     nextDayFeel: includeNextDayFeel ? Int(nextDayFeel) : nil,
                     notes: notes,
@@ -249,22 +276,64 @@ struct PourAddView: View {
 
 private struct BottlePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @Binding var selectedBottleID: UUID?
     let bottles: [Bottle]
+    @Binding var source: BottleSourceOption
     @State private var query = ""
+    @State private var loadingDiscover = false
+    @State private var discoverResults: [DiscoverBottle] = []
 
     var body: some View {
         NavigationStack {
-            List(filtered) { bottle in
-                Button {
-                    selectedBottleID = bottle.id
-                    dismiss()
-                } label: {
-                    HStack {
-                        Text(bottle.name)
-                        Spacer()
-                        if selectedBottleID == bottle.id {
-                            Image(systemName: "checkmark")
+            List {
+                Section {
+                    Picker("Bottle Source", selection: $source) {
+                        ForEach(BottleSourceOption.allCases) { option in
+                            Text(option.rawValue).tag(option)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                if source == .cabinet {
+                    Section("My Cabinet") {
+                        ForEach(filteredCabinet) { bottle in
+                            Button {
+                                selectedBottleID = bottle.id
+                                dismiss()
+                            } label: {
+                                HStack {
+                                    Text(bottle.name)
+                                    Spacer()
+                                    if selectedBottleID == bottle.id {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Section(source == .restaurant ? "Restaurant Suggestions" : "Suggestions") {
+                        if loadingDiscover {
+                            ProgressView()
+                        } else if filteredDiscover.isEmpty {
+                            Text("No matches. Try a different name or brand.")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(filteredDiscover) { result in
+                                Button {
+                                    selectedBottleID = ensureBottle(for: result).id
+                                    dismiss()
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(result.name)
+                                        Text("\(result.brand) • \(result.type.rawValue)")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -276,14 +345,79 @@ private struct BottlePickerSheet: View {
                     Button("Cancel") { dismiss() }
                 }
             }
+            .task(id: source) {
+                await loadDiscover()
+            }
+            .task(id: query) {
+                await loadDiscover()
+            }
         }
     }
 
-    private var filtered: [Bottle] {
+    private var filteredCabinet: [Bottle] {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return bottles }
         return bottles.filter {
             $0.name.localizedCaseInsensitiveContains(query)
                 || ($0.brand?.localizedCaseInsensitiveContains(query) ?? false)
         }
+    }
+
+    private var filteredDiscover: [DiscoverBottle] {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return discoverResults.isEmpty ? DiscoverService.popular() : discoverResults
+        }
+        return discoverResults
+    }
+
+    private func loadDiscover() async {
+        guard source == .restaurant else {
+            discoverResults = []
+            loadingDiscover = false
+            return
+        }
+
+        loadingDiscover = true
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            discoverResults = DiscoverService.popular()
+            loadingDiscover = false
+            return
+        }
+
+        discoverResults = await DiscoverService.search(trimmed)
+        if discoverResults.isEmpty {
+            discoverResults = DiscoverService.looseCatalogSearch(trimmed)
+        }
+        loadingDiscover = false
+    }
+
+    private func ensureBottle(for result: DiscoverBottle) -> Bottle {
+        if let existing = bottles.first(where: {
+            $0.name.caseInsensitiveCompare(result.name) == .orderedSame
+                && ($0.brand ?? "").caseInsensitiveCompare(result.brand) == .orderedSame
+        }) {
+            return existing
+        }
+
+        let created = Bottle(
+            name: result.name,
+            brand: result.brand,
+            typeRaw: result.type.rawValue,
+            regionRaw: result.region.rawValue,
+            nom: result.nom,
+            abv: 40,
+            pricePaid: nil,
+            purchaseDate: nil,
+            notes: "Logged from restaurant tasting",
+            rating: 0,
+            bottleSizeML: 750,
+            openedDate: nil,
+            fillLevelPercent: 100,
+            quantityOwned: 1,
+            cellarLocation: nil
+        )
+        modelContext.insert(created)
+        try? modelContext.save()
+        return created
     }
 }
